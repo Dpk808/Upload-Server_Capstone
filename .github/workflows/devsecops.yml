@@ -51,8 +51,8 @@ jobs:
     # ----------------------------------
     # Build Docker Image (for Trivy Image Scan)
     # ----------------------------------
-    - name: Build upload-server Docker Image
-      run: docker build -t upload-server:latest .
+    - name: Build Upload-Server Docker Image
+      run: docker build -t upload-server:latest docker/
 
     # ----------------------------------
     # TRIVY – Filesystem Scan
