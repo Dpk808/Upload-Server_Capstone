@@ -86,13 +86,14 @@ jobs:
         uses: sonarsource/sonarqube-scan-action@v6
         with:
           args: >
-            -Dsonar.projectKey=devsecops-capstone
-            -Dsonar.organization=devsecops-capstone
+            -Dsonar.projectKey=upload-server-capstone_cap
+            -Dsonar.organization=upload-server-capstone
             -Dsonar.sources=app/upload_server
             -Dsonar.projectBaseDir=.
             -Dsonar.branch.name=main
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
 
 
 
