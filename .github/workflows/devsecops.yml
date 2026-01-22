@@ -1,0 +1,140 @@
+name: Upload Server DevSecOps Pipeline
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+jobs:
+  devsecops-pipeline:
+    runs-on: ubuntu-latest
+
+    steps:
+    # -------------------------
+    # Checkout code
+    # -------------------------
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    # -------------------------
+    # Create reports folder
+    # -------------------------
+    - name: Create reports folder
+      run: mkdir -p reports
+
+    # -------------------------
+    # Setup Python (Upload Server)
+    # -------------------------
+    - name: Setup Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.11
+
+    # -------------------------
+    # Install dependencies
+    # -------------------------
+    - name: Install dependencies
+      working-directory: app/upload_server
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    # -------------------------
+    # SNYK - Dependency Scan
+    # -------------------------
+    - name: Snyk Scan
+      uses: snyk/actions/python@v1
+      env:
+        SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+      with:
+        args: test --severity-threshold=high --json > reports/snyk.json
+      continue-on-error: true
+
+    # -------------------------
+    # Build Docker Image
+    # -------------------------
+    - name: Build Upload Server Docker Image
+      run: docker build -t upload-server:latest docker
+
+    # -------------------------
+    # TRIVY - Filesystem Scan
+    # -------------------------
+    - name: Trivy Filesystem Scan
+      uses: aquasecurity/trivy-action@0.20.0
+      with:
+        scan-type: fs
+        scan-ref: .
+        format: json
+        output: reports/trivy-fs.json
+        severity: CRITICAL,HIGH
+        exit-code: 0
+        vuln-type: os,library
+        scanners: vuln
+        skip-dirs: ".git,reports,__pycache__"
+        cache-dir: /tmp/trivy-cache
+
+    # -------------------------
+    # TRIVY - Docker Image Scan
+    # -------------------------
+    - name: Trivy Image Scan
+      uses: aquasecurity/trivy-action@0.20.0
+      with:
+        image-ref: upload-server:latest
+        format: json
+        output: reports/trivy-image.json
+        severity: CRITICAL,HIGH
+        exit-code: 0
+        vuln-type: os,library
+        scanners: vuln
+        cache-dir: /tmp/trivy-cache
+
+    # -------------------------
+    # SONARCLOUD SAST (optional)
+    # -------------------------
+    - name: SonarCloud Scan
+      uses: sonarsource/sonarqube-scan-action@v6
+      with:
+        args: >
+          -Dsonar.projectKey=upload_server_cap
+          -Dsonar.organization=upload-server-org
+          -Dsonar.sources=app
+          -Dsonar.branch.name=main
+      env:
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+    # -------------------------
+    # DAST - OWASP ZAP (COMMENTED OUT)
+    # -------------------------
+    # - name: Start Upload Server for DAST
+    #   run: docker run -d --name upload-server -p 5000:5000 upload-server:latest
+    # - name: ZAP Baseline Scan
+    #   uses: zaproxy/action-baseline@v0.14.0
+    #   with:
+    #     target: "http://localhost:5000"
+    #     cmd_options: "-T 10 -r zap_report.html"
+    #     fail_action: false
+    #   continue-on-error: true
+    # - name: Stop Upload Server
+    #   if: always()
+    #   run: docker stop upload-server || true
+
+    # -------------------------
+    # PHASE 2 - Suggest Fixes
+    # -------------------------
+    - name: Generate Fix Suggestions
+      run: python scripts/snyk_fix.py
+
+    # -------------------------
+    # Generate Consolidated Summary
+    # -------------------------
+    - name: Generate Consolidated Report
+      run: python scripts/report_generator.py
+
+    # -------------------------
+    # Upload Reports
+    # -------------------------
+    - name: Upload Reports
+      uses: actions/upload-artifact@v4
+      with:
+        name: security-reports
+        path: reports/
