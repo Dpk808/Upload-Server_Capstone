@@ -43,7 +43,7 @@ jobs:
     # Build Docker image (fixed context)
     # -------------------------
     - name: Build Upload-Server Docker Image
-      run: docker build -t upload-server:latest .
+      run: docker build -t upload-server:latest docker/
 
     # -------------------------
     # TRIVY – Filesystem Scan
