@@ -10,143 +10,125 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    # -------------------------
-    # Checkout repository
-    # -------------------------
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      # ----------------------------------
+      # Checkout code
+      # ----------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    # -------------------------
-    # Create reports folder
-    # -------------------------
-    - name: Create reports folder
-      run: mkdir -p reports
+      # ----------------------------------
+      # Create reports folder
+      # ----------------------------------
+      - name: Create reports folder
+        run: mkdir -p reports
 
-    # -------------------------
-    # Setup Python
-    # -------------------------
-    - name: Setup Python 3.11
-      uses: actions/setup-python@v4
-      with:
-        python-version: 3.11
+      # ----------------------------------
+      # Build Docker Image (Upload-Server)
+      # ----------------------------------
+      - name: Build Upload-Server Docker Image
+        run: docker build -t upload-server:latest -f docker/Dockerfile .
 
-    # -------------------------
-    # Install Python dependencies
-    # -------------------------
-    - name: Install Python dependencies
-      working-directory: app/upload_server
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
+      # ----------------------------------
+      # TRIVY – Filesystem Scan
+      # ----------------------------------
+      - name: Trivy Filesystem Scan
+        uses: aquasecurity/trivy-action@0.20.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: json
+          output: reports/trivy-fs.json
+          severity: CRITICAL,HIGH
+          exit-code: 0
+          vuln-type: os,library
+          scanners: vuln
+          skip-dirs: "node_modules,.git,reports"
+          cache-dir: /tmp/trivy-cache
 
-    # -------------------------
-    # Build Docker image (fixed context)
-    # -------------------------
-    - name: Build Upload-Server Docker Image
-      run: docker build -t upload-server:latest docker/
+      # ----------------------------------
+      # TRIVY – Docker Image Scan
+      # ----------------------------------
+      - name: Trivy Image Scan
+        uses: aquasecurity/trivy-action@0.20.0
+        with:
+          image-ref: upload-server:latest
+          format: json
+          output: reports/trivy-image.json
+          severity: CRITICAL,HIGH
+          exit-code: 0
+          vuln-type: os,library
+          scanners: vuln
+          cache-dir: /tmp/trivy-cache
 
-    # -------------------------
-    # TRIVY – Filesystem Scan
-    # -------------------------
-    - name: Trivy Filesystem Scan
-      uses: aquasecurity/trivy-action@0.20.0
-      with:
-        scan-type: fs
-        scan-ref: .
-        format: json
-        output: reports/trivy-fs.json
-        severity: CRITICAL,HIGH
-        exit-code: 0
-        vuln-type: os,library
-        scanners: vuln
-        skip-dirs: "venv,.git,reports"
-        cache-dir: /tmp/trivy-cache
+      # ----------------------------------
+      # SNYK – Dependency Vulnerability Scan
+      # ----------------------------------
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
 
-    # -------------------------
-    # TRIVY – Docker Image Scan
-    # -------------------------
-    - name: Trivy Image Scan
-      uses: aquasecurity/trivy-action@0.20.0
-      with:
-        image-ref: upload-server:latest
-        format: json
-        output: reports/trivy-image.json
-        severity: CRITICAL,HIGH
-        exit-code: 0
-        vuln-type: os,library
-        scanners: vuln
-        cache-dir: /tmp/trivy-cache
+      - name: Install Python dependencies
+        run: pip install -r app/upload_server/requirements.txt
 
-    # -------------------------
-    # SNYK – Dependency Scan
-    # -------------------------
-    - name: Snyk Scan
-      uses: snyk/actions/python@master
-      env:
-        SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-      with:
-        args: test --json > reports/snyk.json
-      continue-on-error: true
+      - name: Snyk Scan
+        uses: snyk/actions/python@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: test --json > reports/snyk.json
+        continue-on-error: true
 
-    # -------------------------
-    # SONARCLOUD – SAST
-    # -------------------------
-    - name: SonarCloud Scan
-      uses: sonarsource/sonarqube-scan-action@v6
-      with:
-        args: >
-          -Dsonar.projectKey=devsecops-capstone
-          -Dsonar.organization=devsecops-capstone
-          -Dsonar.sources=app/upload_server
-          -Dsonar.branch.name=main
-      env:
-        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      # ----------------------------------
+      # SONARCLOUD – SAST
+      # ----------------------------------
+      - name: SonarCloud Scan
+        uses: sonarsource/sonarqube-scan-action@v6
+        with:
+          args: >
+            -Dsonar.projectKey=devsecops-capstone
+            -Dsonar.organization=devsecops-capstone
+            -Dsonar.sources=app/upload_server
+            -Dsonar.branch.name=main
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
-    # -------------------------
-    # DAST – OWASP ZAP (COMMENTED OUT)
-    # -------------------------
-    # - name: Start Upload Server for ZAP
-    #   run: |
-    #     docker run -d --name upload-server -p 5000:5000 upload-server:latest
-    #     sleep 20
-    #
-    # - name: ZAP Baseline Scan
-    #   uses: zaproxy/action-baseline@v0.14.0
-    #   with:
-    #     target: "http://localhost:5000"
-    #     cmd_options: "-T 15 -r zap_report.html"
-    #     fail_action: false
-    #   continue-on-error: true
-    #
-    # - name: Upload ZAP Report
-    #   uses: actions/upload-artifact@v4
-    #   with:
-    #     name: zap-report
-    #     path: zap_report.html
-    #
-    # - name: Stop Upload Server
-    #   if: always()
-    #   run: |
-    #     docker stop upload-server || true
-    #     docker rm upload-server || true
+      # ----------------------------------
+      # DAST – OWASP ZAP (COMMENTED OUT)
+      # ----------------------------------
+      # - name: Start Upload Server for ZAP
+      #   run: |
+      #     docker run -d --name upload-server -p 5000:5000 upload-server:latest
+      #     sleep 20
+      #
+      # - name: ZAP Baseline Scan
+      #   uses: zaproxy/action-baseline@v0.14.0
+      #   with:
+      #     target: "http://localhost:5000"
+      #     cmd_options: "-T 10 -r zap_report.html"
+      #     fail_action: false
+      #   continue-on-error: true
+      #
+      # - name: Upload ZAP Report
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: zap-report
+      #     path: zap_report.html
+      #
+      # - name: Stop Upload Server
+      #   if: always()
+      #   run: |
+      #     docker stop upload-server || true
+      #     docker rm upload-server || true
 
-    # -------------------------
-    # Upload Security Reports
-    # -------------------------
-    - name: Upload Reports
-      uses: actions/upload-artifact@v4
-      with:
-        name: security-reports
-        path: reports/
+      # ----------------------------------
+      # Generate Consolidated Summary
+      # ----------------------------------
+      - name: Generate Consolidated Summary
+        run: python3 scripts/report_generator.py
 
-    # -------------------------
-    # Generate Consolidated Summary
-    # -------------------------
-    - name: Generate Summary Report
-      run: python scripts/report_generator.py
-
-    - name: Upload Summary Report
-      uses: actions/upload-artifact@v4
-      with:
-        name: summary-report
-        path: reports/summary.html
+      - name: Upload Security Reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-reports
+          path: reports/
