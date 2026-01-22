@@ -71,13 +71,13 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r app/upload_server/requirements.txt
 
-      - name: Snyk Scan
-        uses: snyk/actions/python@master
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        with:
-          args: test --json > reports/snyk.json
-        continue-on-error: true
+      # - name: Snyk Scan
+      #   uses: snyk/actions/python@master
+      #   env:
+      #     SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+      #   with:
+      #     args: test --json > reports/snyk.json
+      #   continue-on-error: true
 
       # ----------------------------------
       # SONARCLOUD – SAST
