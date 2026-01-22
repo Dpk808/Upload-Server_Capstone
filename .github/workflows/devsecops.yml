@@ -89,7 +89,7 @@ jobs:
             -Dsonar.projectKey=devsecops-capstone
             -Dsonar.organization=devsecops-capstone
             -Dsonar.sources=app/upload_server
-            -Dsonar.branch.name=main   # Must match the default branch in SonarCloud
+            -Dsonar.branch.name=main 
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
