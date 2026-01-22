@@ -21,12 +21,11 @@ jobs:
       with:
         python-version: "3.11"
 
-    # Node.js setup without caching (fix missing lockfile issue)
+    # Node.js setup without cache inputs to avoid error
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
         node-version: 18
-        cache: "none"
 
     - name: Install Python dependencies
       working-directory: app/upload_server
