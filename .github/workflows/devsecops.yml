@@ -97,7 +97,7 @@ jobs:
 
 
       # ----------------------------------
-      # DAST – OWASP ZAP (COMMENTED OUT)
+      # DAST – OWASP ZAP (COMMENTED OUT) for now
       # ----------------------------------
       # - name: Start Upload Server for ZAP
       #   run: |
