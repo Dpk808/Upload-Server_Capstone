@@ -1,4 +1,4 @@
-name: Upload Server DevSecOps Pipeline
+name: DevSecOps Upload-Server Pipeline
 
 on:
   push:
@@ -10,55 +10,64 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    # -------------------------
-    # Checkout code
-    # -------------------------
+    # ----------------------------------
+    # Checkout source code
+    # ----------------------------------
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    # -------------------------
-    # Create reports folder
-    # -------------------------
+    # ----------------------------------
+    # Create reports directory
+    # ----------------------------------
     - name: Create reports folder
       run: mkdir -p reports
 
-    # -------------------------
-    # Setup Python (Upload Server)
-    # -------------------------
-    - name: Setup Python 3.11
+    # ----------------------------------
+    # Setup Python
+    # ----------------------------------
+    - name: Setup Python
       uses: actions/setup-python@v4
       with:
         python-version: 3.11
 
-    # -------------------------
-    # Install dependencies
-    # -------------------------
-    - name: Install dependencies
-      working-directory: app/upload_server
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
+    # ----------------------------------
+    # Cache pip packages
+    # ----------------------------------
+    - name: Cache pip
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('app/upload_server/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
 
-    # -------------------------
-    # SNYK - Dependency Scan
-    # -------------------------
+    # ----------------------------------
+    # Install Python dependencies
+    # ----------------------------------
+    - name: Install Upload-Server dependencies
+      working-directory: app/upload_server
+      run: pip install --upgrade pip && pip install -r requirements.txt
+
+    # ----------------------------------
+    # SNYK - Dependency Vulnerability Scan
+    # ----------------------------------
     - name: Snyk Scan
       uses: snyk/actions/python@v1
       env:
         SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
       with:
-        args: test --severity-threshold=high --json > reports/snyk.json
+        args: test --json --all-projects=false > reports/snyk.json
       continue-on-error: true
 
-    # -------------------------
-    # Build Docker Image
-    # -------------------------
-    - name: Build Upload Server Docker Image
-      run: docker build -t upload-server:latest docker
+    # ----------------------------------
+    # Build Docker Image (for Trivy Image Scan)
+    # ----------------------------------
+    - name: Build Upload-Server Docker Image
+      run: docker build -t upload-server:latest docker/
 
-    # -------------------------
-    # TRIVY - Filesystem Scan
-    # -------------------------
+    # ----------------------------------
+    # TRIVY – Filesystem Scan
+    # ----------------------------------
     - name: Trivy Filesystem Scan
       uses: aquasecurity/trivy-action@0.20.0
       with:
@@ -70,12 +79,12 @@ jobs:
         exit-code: 0
         vuln-type: os,library
         scanners: vuln
-        skip-dirs: ".git,reports,__pycache__"
+        skip-dirs: ".git,reports"
         cache-dir: /tmp/trivy-cache
 
-    # -------------------------
-    # TRIVY - Docker Image Scan
-    # -------------------------
+    # ----------------------------------
+    # TRIVY – Docker Image Scan
+    # ----------------------------------
     - name: Trivy Image Scan
       uses: aquasecurity/trivy-action@0.20.0
       with:
@@ -88,25 +97,28 @@ jobs:
         scanners: vuln
         cache-dir: /tmp/trivy-cache
 
-    # -------------------------
-    # SONARCLOUD SAST (optional)
-    # -------------------------
+    # ----------------------------------
+    # SONARCLOUD – SAST
+    # ----------------------------------
     - name: SonarCloud Scan
       uses: sonarsource/sonarqube-scan-action@v6
       with:
         args: >
-          -Dsonar.projectKey=upload_server_cap
-          -Dsonar.organization=upload-server-org
+          -Dsonar.projectKey=upload-server-capstone
+          -Dsonar.organization=devsecops-capstone
           -Dsonar.sources=app
           -Dsonar.branch.name=main
       env:
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
-    # -------------------------
-    # DAST - OWASP ZAP (COMMENTED OUT)
-    # -------------------------
-    # - name: Start Upload Server for DAST
-    #   run: docker run -d --name upload-server -p 5000:5000 upload-server:latest
+    # ----------------------------------
+    # DAST – OWASP ZAP (COMMENTED OUT)
+    # ----------------------------------
+    # - name: Start Upload-Server Container
+    #   run: |
+    #     docker run -d --name upload-server -p 5000:5000 upload-server:latest
+    #     sleep 20
+    #
     # - name: ZAP Baseline Scan
     #   uses: zaproxy/action-baseline@v0.14.0
     #   with:
@@ -114,26 +126,29 @@ jobs:
     #     cmd_options: "-T 10 -r zap_report.html"
     #     fail_action: false
     #   continue-on-error: true
-    # - name: Stop Upload Server
+    #
+    # - name: Upload ZAP Report
+    #   uses: actions/upload-artifact@v4
+    #   with:
+    #     name: zap-report
+    #     path: zap_report.html
+    #
+    # - name: Stop Upload-Server Container
     #   if: always()
-    #   run: docker stop upload-server || true
+    #   run: |
+    #     docker stop upload-server || true
+    #     docker rm upload-server || true
 
-    # -------------------------
-    # PHASE 2 - Suggest Fixes
-    # -------------------------
-    - name: Generate Fix Suggestions
-      run: python scripts/snyk_fix.py
-
-    # -------------------------
+    # ----------------------------------
     # Generate Consolidated Summary
-    # -------------------------
-    - name: Generate Consolidated Report
-      run: python scripts/report_generator.py
+    # ----------------------------------
+    - name: Generate Summary Report
+      run: python3 scripts/report_generator.py
 
-    # -------------------------
-    # Upload Reports
-    # -------------------------
-    - name: Upload Reports
+    # ----------------------------------
+    # Upload Security Reports
+    # ----------------------------------
+    - name: Upload Security Reports
       uses: actions/upload-artifact@v4
       with:
         name: security-reports
