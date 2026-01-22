@@ -1,4 +1,4 @@
-name: DevSecOps Upload-Server Pipeline
+name: DevSecOps Capstone Pipeline
 
 on:
   push:
@@ -6,69 +6,66 @@ on:
   pull_request:
 
 jobs:
-  devsecops-pipeline:
+  security-pipeline:
     runs-on: ubuntu-latest
 
     steps:
-    # ----------------------------------
-    # Checkout source code
-    # ----------------------------------
-    - name: Checkout repository
+    # -------------------------
+    # Checkout repository
+    # -------------------------
+    - name: Checkout code
       uses: actions/checkout@v4
 
-    # ----------------------------------
-    # Create reports directory
-    # ----------------------------------
+    # -------------------------
+    # Create reports folder
+    # -------------------------
     - name: Create reports folder
       run: mkdir -p reports
 
-    # ----------------------------------
-    # Setup Python
-    # ----------------------------------
+    # -------------------------
+    # Setup Python (for upload-server)
+    # -------------------------
     - name: Setup Python
       uses: actions/setup-python@v4
       with:
-        python-version: 3.11
+        python-version: "3.11"
 
-    # ----------------------------------
-    # Cache pip packages
-    # ----------------------------------
-    - name: Cache pip
-      uses: actions/cache@v3
+    # -------------------------
+    # Setup Node.js (needed if frontend or npm scripts exist)
+    # -------------------------
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
       with:
-        path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ hashFiles('app/upload_server/requirements.txt') }}
-        restore-keys: |
-          ${{ runner.os }}-pip-
+        node-version: 18
+        cache: 'npm'
 
-    # ----------------------------------
+    # -------------------------
     # Install Python dependencies
-    # ----------------------------------
-    - name: Install Upload-Server dependencies
+    # -------------------------
+    - name: Install Python dependencies
       working-directory: app/upload_server
-      run: pip install --upgrade pip && pip install -r requirements.txt
+      run: pip install -r requirements.txt
 
-    # ----------------------------------
-    # SNYK - Dependency Vulnerability Scan
-    # ----------------------------------
-    - name: Snyk Scan
-      uses: snyk/actions/python@v1
+    # -------------------------
+    # SNYK – Dependency Vulnerability Scan
+    # -------------------------
+    - name: Snyk Dependency Scan
+      uses: snyk/actions/python@master
       env:
         SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
       with:
-        args: test --json --all-projects=false > reports/snyk.json
+        command: test --json
       continue-on-error: true
 
-    # ----------------------------------
+    # -------------------------
     # Build Docker Image (for Trivy Image Scan)
-    # ----------------------------------
-    - name: Build Upload-Server Docker Image
-      run: docker build -t upload-server:latest -f docker/Dockerfile .
+    # -------------------------
+    - name: Build Docker Image
+      run: docker build -t upload-server:latest docker/
 
-
-    # ----------------------------------
+    # -------------------------
     # TRIVY – Filesystem Scan
-    # ----------------------------------
+    # -------------------------
     - name: Trivy Filesystem Scan
       uses: aquasecurity/trivy-action@0.20.0
       with:
@@ -80,13 +77,13 @@ jobs:
         exit-code: 0
         vuln-type: os,library
         scanners: vuln
-        skip-dirs: ".git,reports"
+        skip-dirs: "venv,.git,reports"
         cache-dir: /tmp/trivy-cache
 
-    # ----------------------------------
+    # -------------------------
     # TRIVY – Docker Image Scan
-    # ----------------------------------
-    - name: Trivy Image Scan
+    # -------------------------
+    - name: Trivy Docker Image Scan
       uses: aquasecurity/trivy-action@0.20.0
       with:
         image-ref: upload-server:latest
@@ -98,24 +95,24 @@ jobs:
         scanners: vuln
         cache-dir: /tmp/trivy-cache
 
-    # ----------------------------------
+    # -------------------------
     # SONARCLOUD – SAST
-    # ----------------------------------
+    # -------------------------
     - name: SonarCloud Scan
       uses: sonarsource/sonarqube-scan-action@v6
       with:
         args: >
-          -Dsonar.projectKey=upload-server-capstone
+          -Dsonar.projectKey=devsecops-capstone
           -Dsonar.organization=devsecops-capstone
           -Dsonar.sources=app
           -Dsonar.branch.name=main
       env:
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
-    # ----------------------------------
+    # -------------------------
     # DAST – OWASP ZAP (COMMENTED OUT)
-    # ----------------------------------
-    # - name: Start Upload-Server Container
+    # -------------------------
+    # - name: Start upload-server Container
     #   run: |
     #     docker run -d --name upload-server -p 5000:5000 upload-server:latest
     #     sleep 20
@@ -134,23 +131,23 @@ jobs:
     #     name: zap-report
     #     path: zap_report.html
     #
-    # - name: Stop Upload-Server Container
+    # - name: Stop upload-server
     #   if: always()
     #   run: |
     #     docker stop upload-server || true
     #     docker rm upload-server || true
 
-    # ----------------------------------
+    # -------------------------
     # Generate Consolidated Summary
-    # ----------------------------------
+    # -------------------------
     - name: Generate Summary Report
       run: python3 scripts/report_generator.py
 
-    # ----------------------------------
-    # Upload Security Reports
-    # ----------------------------------
-    - name: Upload Security Reports
+    # -------------------------
+    # Upload Summary Report
+    # -------------------------
+    - name: Upload Summary Report
       uses: actions/upload-artifact@v4
       with:
-        name: security-reports
-        path: reports/
+        name: summary-report
+        path: reports/summary.html
